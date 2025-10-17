@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Aero Blue EVM Creator — Web3Modal v2 · CREATE2 · Verification</title>
+  <meta name="description" content="EVM Contract Creator with Web3Modal v2, WalletConnect v2, CREATE2 vanity, import flattener with preview, and backend verification integrations." />
+  <style>
+    /* Styles (Aero Blue theme) - abbreviated for brevity */
+    :root{
+      --primary:#0077ff; --accent:#ff6fb3; --bg1:#e6f7ff; --bg2:#f0f8ff; --text:#0b2845; --muted:#5a7386;
+      font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+    }
+    body{margin:0;background:linear-gradient(180deg,var(--bg1),var(--bg2));color:var(--text);height:100vh;}
+    .app{max-width:1200px;margin:36px auto;padding:20px;}
+    /* ... keep your previous Aero Blue CSS here ... */
+    textarea.code{width:100%;min-height:380px;font-family:ui-monospace; font-size:13px;padding:12px;border-radius:8px;}
+    .panel{padding:14px;border-radius:12px;background:rgba(255,255,255,0.9);box-shadow:0 10px 30px rgba(2,12,34,0.06);}    
+    pre.small{background:#f6fbff;padding:8px;border-radius:8px;overflow:auto;}
+    .split{display:flex;gap:12px;}
+    .col{flex:1;}
+    .side{width:360px;}
+    .btn{background:linear-gradient(90deg,var(--primary),#2fb0ff);color:white;padding:8px 10px;border-radius:8px;border:0;cursor:pointer;}
+    .ghost{background:transparent;border:1px solid rgba(0,0,0,0.06);padding:8px;border-radius:8px;}
+    .small-muted{font-size:13px;color:var(--muted);}  
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div>
+        <h2>Aero Blue EVM Creator</h2>
+        <div class="small-muted">Web3Modal v2 · WalletConnect v2 · CREATE2 · Flatten preview · Backend verification</div>
+      </div>
+<div>
+  <div id="networkStatus">Current Network: Loading...</div>
+  <button onclick="switchNetwork("mainnet")">Switch to Mainnet</button>
+  <button onclick="switchNetwork("optimism")">Switch to Optimism</button>
+</div>
+      <div>
+  <button id="connectSignBtn">Connect & Sign</button>
+  <div id="status">Not connected</div>
+  <button id="connectBtn" onclick="connectWallet()">Connect MetaMask</button>
+  <button id="disconnectBtn" style="display: none" onclick="disconnectWallet()">
+    Disconnect
+  </button>
+</div>
+    </header>
+
+    <div class="split">
+      <section class="panel col">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div>
+            <strong>Solidity Editor</strong>
+            <div class="small-muted">Edit your contract, flatten imports, compile, and deploy.</div>
+          </div>
+          <div>
+            <select id="compilerSelect"><option>0.8.20</option><option>0.8.17</option><option>0.7.6</option></select>
+            <button id="loadCompilerBtn" class="ghost">Load</button>
+          </div>
+        </div>
+
+        <textarea id="solidityCode" class="code">// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract HelloAero {
+    string public message;
+    constructor(string memory _m) { message = _m; }
+    function setMessage(string memory _m) external { message = _m; }
+}
+</textarea>
+
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <button id="flattenBtn" class="ghost">Flatten (preview)</button>
+          <button id="compileBtn" class="btn">Compile</button>
+          <button id="deployBtn" class="btn" style="background:linear-gradient(90deg,#ff6fb3,#ff8bd2)">Deploy</button>
+          <button id="deployFactoryBtn" class="ghost">Deploy CREATE2 Factory</button>
+          <label style="margin-left:12px;"><input id="flattenImports" type="checkbox" /> Inline imports before compiling</label>
+        </div>
+
+        <div id="compileOutput" style="margin-top:12px"></div>
+
+        <div id="flattenPreviewModal" style="display:none;">
+          <h4>Flatten Preview</h4>
+          <pre id="flattenContent" class="small"></pre>
+          <div style="display:flex;gap:8px;">
+            <button id="applyFlatten" class="btn">Apply flattened source to editor</button>
+            <button id="closeFlatten" class="ghost">Close</button>
+            <button id="showDiff" class="ghost">Show Diff</button>
+          </div>
+          <pre id="flattenDiff" style="display:none" class="small"></pre>
+        </div>
+
+        <hr style="margin:14px 0" />
+
+        <div>
+          <h4>Pragma / Compiler</h4>
+          <div class="small-muted">Detected pragma: <span id="detectedPragma">^0.8.20</span></div>
+        </div>
+
+      </section>
+
+      <aside class="panel side">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <strong>CREATE2 Tools</strong>
+            <div class="small-muted">Compute deterministic address or search for vanity salt</div>
+            <input id="create2Deployer" placeholder="CREATE2 deployer address" style="width:100%;padding:8px;border-radius:8px;border:1px solid #eee;margin-top:6px"/>
+            <input id="create2Salt" placeholder="salt (text or 0x...)" style="width:100%;padding:8px;border-radius:8px;border:1px solid #eee;margin-top:6px"/>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button id="computeCreate2" class="btn">Compute Address</button>
+              <button id="vanitySearch" class="ghost">Vanity search (limited)</button>
+            </div>
+            <div id="create2Result" class="small-muted" style="margin-top:8px"></div>
+          </div>
+
+          <div>
+            <strong>Verification</strong>
+            <div class="small-muted">Submit compiled source to backend for explorer verification</div>
+            <input id="backendUrl" placeholder="localhost:4000/backend" style="width:100%;padding:8px;border-radius:8px;border:1px solid #eee;margin-top:6px"/>
+            <button id="submitVerify" class="btn" style="margin-top:8px">Submit Verification</button>
+            <div id="verifyStatus" class="small-muted" style="margin-top:8px"></div>
+          </div>
+
+          <div>
+            <strong>ENS helper</strong>
+            <div class="small-muted">Resolve name → address or suggest registering after deploy</div>
+            <input id="ensName" placeholder="vitalik.eth" style="width:100%;padding:8px;border-radius:8px;border:1px solid #eee;margin-top:6px"/>
+            <button id="resolveENS" class="ghost" style="margin-top:8px">Resolve</button>
+            <div id="ensResult" class="small-muted"></div>
+          </div>
+
+          <div>
+            <strong>Connected account</strong>
+            <div id="accountInfo" class="small-muted">Not connected</div>
+          </div>
+
+          <div>
+            <strong>Deployer Registry</strong>
+            <div class="small-muted">Manage known create2 deployer contracts (local/session)</div>
+            <button id="addDeployer" class="ghost">Register current factory</button>
+            <div id="deployerList" class="small-muted"></div>
+          </div>
+
+        </div>
+      </aside>
+    </div>
+
+    <footer style="margin-top:18px" class="small-muted">Save your API keys to the backend .env. Test on testnets first.</footer>
+  </div>
+
+  <!-- Scripts -->
+  <!-- ethers.js -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
+
+  <!-- Web3Modal v2 (example) -->
+  <!-- IMPORTANT: Web3Modal v2 is distributed in multiple packages; here we show a minimal pattern using the official CDN UMD bundles if available.
+       In production, install via npm and bundle. -->
+  <script src="https://unpkg.com/@web3modal/html@2.0.0-beta.22/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@web3modal/ethereum@2.0.0-beta.22/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@walletconnect/web3provider@1.8.0/dist/umd/index.min.js"></script>
+
+  <script>
+    (async function(){
+      // Basic app state
+      let provider = null;
+      let ethersProvider = null;
+      let signer = null;
+      let account = null;
+      let lastCompile = null; // {abi, bytecode, source}
+      let flattenedSource = null;
+
+      // UI refs
+      const connectBtn = document.getElementById('connectBtn');
+      const compileBtn = document.getElementById('compileBtn');
+      const deployBtn = document.getElementById('deployBtn');
+      const solidityCodeEl = document.getElementById('solidityCode');
+      const compileOutput = document.getElementById('compileOutput');
+      const detectedPragmaEl = document.getElementById('detectedPragma');
+      const flattenBtn = document.getElementById('flattenBtn');
+      const flattenPreviewModal = document.getElementById('flattenPreviewModal');
+      const flattenContent = document.getElementById('flattenContent');
+      const applyFlatten = document.getElementById('applyFlatten');
+      const closeFlatten = document.getElementById('closeFlatten');
+      const showDiff = document.getElementById('showDiff');
+      const flattenDiff = document.getElementById('flattenDiff');
+
+      // CREATE2 UI
+      const computeCreate2Btn = document.getElementById('computeCreate2');
+      const create2Deployer = document.getElementById('create2Deployer');
+      const create2Salt = document.getElementById('create2Salt');
+      const create2Result = document.getElementById('create2Result');
+      const vanitySearchBtn = document.getElementById('vanitySearch');
+
+      // Verification UI
+      const backendUrlInput = document.getElementById('backendUrl');
+      const submitVerify = document.getElementById('submitVerify');
+      const verifyStatus = document.getElementById('verifyStatus');
+
+      // ENS UI
+      const ensName = document.getElementById('ensName');
+      const resolveENSBtn = document.getElementById('resolveENS');
+      const ensResult = document.getElementById('ensResult');
+
+      // Basic Web3Modal v2 usage (requires a projectId)
+      // In production: set a projectId from walletconnect cloud or web3modal project and pass it to the modal
+      const projectId = 'REPLACE_WITH_YOUR_PROJECT_ID'; // <-- set before use
+      let web3Modal;
+      try {
+        // Using Web3Modal v2 UMD available above
+        const { Web3Modal } = window.Web3Modal;
+        const { EthereumClient, w3mConnectors, w3mProvider } = window.Web3ModalEthereum;
+        // Connectors for WalletConnect & injected
+        const ethereumClient = new EthereumClient({ projectId });
+        web3Modal = new Web3Modal({ projectId, ethereumClient });
+      } catch(e) {
+        console.warn('Web3Modal v2 initialization failed (UMD). For production, bundle web3modal v2 via npm and set projectId.');
+      }
+
+      // Connect wallet fallback (MetaMask if Web3Modal not fully available)
+      async function connectWallet(){
+        try {
+          if(web3Modal && web3Modal.open) {
+            await web3Modal.open();
+            // ethereum provider will be injected into window.ethereum by modal flow
+          }
+          if(window.ethereum){
+            provider = window.ethereum;
+            ethersProvider = new ethers.providers.Web3Provider(provider);
+            signer = ethersProvider.getSigner();
+            account = await signer.getAddress();
+            document.getElementById('accountInfo').textContent = account;
+            connectBtn.textContent = account.slice(0,6)+'...'+account.slice(-4);
+          } else {
+            alert('No wallet found. Install MetaMask or use WalletConnect via Web3Modal.');
+            return;
+          }
+        } catch(e){
+          console.error('connect error', e);
+          alert('Could not connect wallet: ' + e.message);
+        }
+      }
+      connectBtn.addEventListener('click', connectWallet);
+
+      // detect pragma
+      function detectPragma(src){
+        const m = src.match(/pragma solidity\s+([^;]+);/i);
+        return m ? m[1].trim() : null;
+      }
+      function updatePragmaUI(){ detectedPragmaEl.textContent = detectPragma(solidityCodeEl.value) || 'none'; }
+      solidityCodeEl.addEventListener('input', updatePragmaUI);
+      updatePragmaUI();
+
+      // Flatten preview: call backend flattener endpoint (preferred) or use client-side logic (fallback)
+      flattenBtn.addEventListener('click', async ()=>{
+        const src = solidityCodeEl.value;
+        const backend = backendUrlInput.value.trim();
+        if(backend){
+          try {
+            const resp = await fetch(backend.replace(/\/+$/,'') + '/api/flatten/preview', {
+              method:'POST',
+              headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ source: src })
+            });
+            const json = await resp.json();
+            if(!resp.ok){ alert('Flatten failed: ' + (json.error || resp.status)); return; }
+            flattenedSource = json.flattened;
+            flattenContent.textContent = flattenedSource;
+            flattenPreviewModal.style.display = 'block';
+          } catch(e){
+            alert('Flatten call failed: ' + e.message);
+          }
+        } else {
+          // Client-side: attempt simple fetch-based resolver (basic)
+          flattenContent.textContent = 'No backend configured. For robust flattening, set backend URL and use server-side flattener.';
+          flattenedSource = null;
+          flattenPreviewModal.style.display = 'block';
+        }
+      });
+
+      applyFlatten.addEventListener('click', ()=>{
+        if(flattenedSource){ solidityCodeEl.value = flattenedSource; updatePragmaUI(); flattenPreviewModal.style.display='none'; }
+      });
+      closeFlatten.addEventListener('click', ()=> flattenPreviewModal.style.display='none');
+      showDiff.addEventListener('click', async ()=>{
+        if(!flattenedSource){ flattenDiff.style.display='block'; flattenDiff.textContent='No flattened source to diff'; return; }
+        // simple diff: show original and flattened side-by-side or show a naive diff
+        flattenDiff.style.display='block';
+        flattenDiff.textContent = '--- Original ---\n' + solidityCodeEl.value + '\n\n--- Flattened ---\n' + flattenedSource;
+      });
+
+      // Compile: call backend compile endpoint or client-side solc if included
+      compileBtn.addEventListener('click', async ()=>{
+        const src = solidityCodeEl.value;
+        const backend = backendUrlInput.value.trim();
+        clearCompileOutput();
+        if(backend){
+          try {
+            const resp = await fetch(backend.replace(/\/+$/,'') + '/api/compile', {
+              method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ source: src })
+            });
+            const json = await resp.json();
+            if(!resp.ok){ appendCompile('Compile failed: ' + json.error, 'err'); return; }
+            lastCompile = json;
+            appendCompile('Compiled remotely: ' + (json.contractName || 'unknown'), 'info');
+            const pre = document.createElement('pre'); pre.className='small'; pre.textContent = JSON.stringify({abi: json.abi, bytecode: json.bytecode ? json.bytecode.slice(0,240)+'...' : ''}, null, 2);
+            compileOutput.appendChild(pre);
+          } catch(e){
+            appendCompile('Remote compile error: ' + e.message, 'err');
+          }
+        } else {
+          appendCompile('No backend configured. Local compile is not bundled in this file. Use backend or bundle solc-js in the page.', 'warn');
+        }
+      });
+      function appendCompile(msg, type='info'){ const d = document.createElement('div'); d.textContent = msg; compileOutput.prepend(d); }
+
+      // CREATE2 compute (client-side)
+      computeCreate2Btn.addEventListener('click', async ()=>{
+        if(!lastCompile || !lastCompile.bytecode){ appendCompile('Compile first or configure backend compile', 'err'); return; }
+        const deployer = create2Deployer.value.trim();
+        if(!deployer){ alert('Enter factory/deployer address'); return; }
+        let salt = create2Salt.value.trim();
+        if(!salt) salt = Math.random().toString(36);
+        let saltHex = salt.startsWith('0x') ? ethers.utils.hexZeroPad(salt, 32) : ethers.utils.keccak256(ethers.utils.toUtf8Bytes(salt));
+        try {
+          const initCodeHash = ethers.utils.keccak256('0x' + lastCompile.bytecode);
+          const addr = ethers.utils.getCreate2Address(deployer, saltHex, initCodeHash);
+          create2Result.innerHTML = `Address: <strong>${addr}</strong><br/>salt: <code>${saltHex}</code><br/>initCodeHash: <code>${initCodeHash}</code>`;
+        } catch(e){
+          create2Result.textContent = 'Compute failed: ' + e.message;
+        }
+      });
+
+      // Vanity search: call backend API which should run a bounded search (server-side)
+      vanitySearchBtn.addEventListener('click', async ()=>{
+        const backend = backendUrlInput.value.trim();
+        if(!backend){ alert('Set backend URL to run vanity search (server-side recommended).'); return; }
+        const prefix = prompt('Enter prefix (hex without 0x), e.g. abcd (search limited)') || '';
+        if(!prefix) return;
+        const deployer = create2Deployer.value.trim();
+        if(!deployer){ alert('Set create2 deployer address first'); return; }
+        // send request
+        buttonState(vanitySearchBtn, true, 'Searching...');
+        try {
+          const resp = await fetch(backend.replace(/\/+$/,'') + '/api/create2/vanity', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prefix, deployer, bytecode: lastCompile.bytecode, maxAttempts: 200000 })
+          });
+          const json = await resp.json();
+          if(!resp.ok){ alert('Vanity search failed: ' + (json.error || resp.status)); }
+          else if(json.found){ create2Result.innerHTML = `Vanity found! salt: <code>${json.salt}</code><br/>address: <strong>${json.address}</strong>`; }
+          else { create2Result.textContent = 'Not found in limited attempts'; }
+        } catch(e){
+          alert('Vanity call failed: ' + e.message);
+        } finally { buttonState(vanitySearchBtn, false); }
+      });
+
+      function buttonState(btn, disabled, text){
+        btn.disabled = disabled;
+        if(text) btn.textContent = text;
+        else btn.textContent = disabled ? 'Working...' : 'Vanity search (limited)';
+      }
+
+      // Submit verification: send compiled artifacts to backend verification endpoint
+      submitVerify.addEventListener('click', async ()=>{
+        const backend = backendUrlInput.value.trim();
+        if(!backend){ alert('Set backend URL'); return; }
+        if(!lastCompile){ alert('Compile first'); return; }
+        verifyStatus.textContent = 'Submitting verification...';
+        try {
+          const payload = { address: lastCompile.deployedAddress || null, source: lastCompile.source || solidityCodeEl.value, compiler: lastCompile.compiler || 'unknown', abi: lastCompile.abi, bytecode: lastCompile.bytecode, contractName: lastCompile.contractName };
+          const resp = await fetch(backend.replace(/\/+$/,'') + '/api/verify', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+          });
+          const json = await resp.json();
+          if(!resp.ok){ verifyStatus.textContent = 'Verification submit failed: ' + (json.error || resp.status); return; }
+          verifyStatus.textContent = 'Verification queued: ' + (json.status || 'ok');
+        } catch(e){
+          verifyStatus.textContent = 'Submit error: ' + e.message;
+        }
+      });
+
+      // ENS resolve
+      resolveENSBtn.addEventListener('click', async ()=>{
+        const n = ensName.value.trim();
+        if(!n) return;
+        if(!ethersProvider){
+          // create a default provider via ethers (public RPC) for lookups
+          ethersProvider = ethers.getDefaultProvider();
+        }
+        try {
+          const resolved = await ethersProvider.resolveName(n);
+          ensResult.textContent = resolved || 'Not found';
+        } catch(e){ ensResult.textContent = 'Resolve failed: ' + e.message; }
+      });
+
+      // Helper to clear compile output
+      function clearCompileOutput(){ compileOutput.innerHTML = ''; }
+
+      // NOTE: This frontend expects the backend to perform heavy tasks:
+      // - compile via solc-js or remote solc manager
+      // - flatten imports robustly (npm/unpkg resolution)
+      // - run CPU-heavy vanity search
+      // - call explorer verification APIs with API keys (server-side)
+      // Security: Do not paste private keys into UI. Backend can use a secure private-key-backed provider (server env) for ENS or automated registration if you enable it.
+
+      // END
+      window.addEventListener('load', ()=>{ console.info('Frontend ready. Configure backend URL and projectId for web3modal.'); });
+    })();
+  </script>
+
+<script>
+import { MetaMaskSDK } from "@metamask/sdk";
+
+// Initialize SDK
+const MMSDK = new MetaMaskSDK();
+const provider = MMSDK.getProvider();
+
+// Connect wallet
+async function connectWallet() {
+  try {
+    // Disable button while request is pending
+    document.getElementById("connectBtn").disabled = true;
+    
+    const accounts = await provider.request({ 
+      method: "eth_requestAccounts" 
+    });
+    
+    const account = accounts[0];
+    console.log("Connected:", account);
+    
+    // Update UI
+    document.getElementById("status").textContent = `Connected: ${account}`;
+    document.getElementById("connectBtn").style.display = "none";
+    document.getElementById("disconnectBtn").style.display = "block";
+  } catch (err) {
+    if (err.code === 4001) {
+      console.log("User rejected connection");
+    } else {
+      console.error(err);
+    }
+  } finally {
+    document.getElementById("connectBtn").disabled = false;
+  }
+}
+
+// Disconnect wallet
+async function disconnectWallet() {
+  try {
+    await MMSDK.terminate()
+  } catch (err) {
+    console.error("Error with disconnecting:", err)
+  }
+}
+
+// Handle account changes
+provider.on("accountsChanged", (accounts) => {
+  if (accounts.length === 0) {
+    // User disconnected
+    document.getElementById("status").textContent = "Not connected";
+    document.getElementById("connectBtn").style.display = "block";
+    document.getElementById("disconnectBtn").style.display = "none";
+  } else {
+    // Account changed
+    document.getElementById("status").textContent = `Connected: ${accounts[0]}`;
+  }
+});
+</script>
+<script>
+import { MetaMaskSDK } from "@metamask/sdk"
+
+const MMSDK = new MetaMaskSDK()
+const provider = MMSDK.getProvider()
+
+async function handleConnectAndSign() {
+  try {
+    const signature = await MMSDK.connectAndSign({ msg: "Hello in one go!" })
+    console.log("Signature:", signature)
+  } catch (err) {
+    console.error("Error with connectAndSign:", err)
+  }
+}
+
+document
+  .getElementById("connectSignBtn")
+  .addEventListener("click", handleConnectAndSign)
+</script>
+
+<script>
+// Get current chain ID
+async function getCurrentChain() {
+  try {
+    const chainId = await ethereum.request({ 
+      method: "eth_chainId" 
+    });
+    console.log("Current chain ID:", chainId);
+    return chainId;
+  } catch (err) {
+    console.error("Error getting chain:", err);
+  }
+}
+
+// Listen for network changes
+ethereum.on("chainChanged", (chainId) => {
+  console.log("Network changed to:", chainId);
+  // We recommend reloading the page
+  window.location.reload();
+});
+
+// Network configurations
+const networks = {
+  mainnet: {
+    chainId: "0x1",
+    name: "Ethereum Mainnet"
+  },
+  optimism: {
+    chainId: "0xA",
+    name: "Optimism",
+    rpcUrls: ["https://mainnet.optimism.io"],
+    nativeCurrency: {
+      name: "Ethereum",
+      symbol: "ETH",
+      decimals: 18
+    },
+    blockExplorerUrls: ["https://optimistic.etherscan.io"]
+  }
+};
+
+async function switchNetwork(networkKey) {
+  const network = networks[networkKey];
+  
+  try {
+    // Try to switch to the network
+    await ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: network.chainId }]
+    });
+  } catch (err) {
+    // If the error code is 4902, the network needs to be added
+    if (err.code === 4902) {
+      try {
+        await ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: network.chainId,
+            chainName: network.name,
+            rpcUrls: network.rpcUrls,
+            nativeCurrency: network.nativeCurrency,
+            blockExplorerUrls: network.blockExplorerUrls
+          }]
+        });
+      } catch (addError) {
+        console.error("Error adding network:", addError);
+      }
+    } else {
+      console.error("Error switching network:", err);
+    }
+  }
+}
+</script>
+
+</body>
+</html>
